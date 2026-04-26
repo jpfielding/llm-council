@@ -112,6 +112,20 @@ func (s *Store) Load(id string) (*Conversation, error) {
 	return &c, nil
 }
 
+func (s *Store) Delete(id string) error {
+	s.rwmu.Lock()
+	defer s.rwmu.Unlock()
+	err := os.Remove(s.path(id))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrNotFound
+		}
+		return err
+	}
+	s.locks.Delete(id)
+	return nil
+}
+
 func (s *Store) List() ([]ConversationMeta, error) {
 	s.rwmu.RLock()
 	defer s.rwmu.RUnlock()

@@ -54,13 +54,42 @@ function renderConvList() {
   }
   el.innerHTML = state.conversations.map((c) => `
     <div class="conv-item ${c.id === state.currentId ? 'active' : ''}" data-id="${c.id}">
-      <div class="conv-title">${escapeHTML(c.title || 'New conversation')}</div>
+      <div class="conv-row">
+        <div class="conv-title">${escapeHTML(c.title || 'New conversation')}</div>
+        <button class="conv-delete" data-delete-id="${c.id}" title="Delete">×</button>
+      </div>
       <div class="conv-meta">${c.message_count} message${c.message_count === 1 ? '' : 's'}</div>
     </div>
   `).join('');
   el.querySelectorAll('.conv-item').forEach((node) => {
-    node.addEventListener('click', () => selectConversation(node.dataset.id));
+    node.addEventListener('click', (e) => {
+      if (e.target.classList.contains('conv-delete')) return;
+      selectConversation(node.dataset.id);
+    });
   });
+  el.querySelectorAll('.conv-delete').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.deleteId;
+      if (!confirm('Delete this conversation?')) return;
+      await deleteConversation(id);
+    });
+  });
+}
+
+async function deleteConversation(id) {
+  if (state.busy) return;
+  const resp = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+  if (!resp.ok && resp.status !== 404) {
+    alert('Failed to delete: ' + resp.status);
+    return;
+  }
+  if (state.currentId === id) {
+    state.currentId = null;
+    state.currentConv = null;
+  }
+  await loadConversations();
+  renderMessages();
 }
 
 async function selectConversation(id) {
@@ -285,14 +314,15 @@ async function submitMessage(content) {
       } else if (ev.type === 'title_complete') {
         state.currentConv.title = ev.payload.title || state.currentConv.title;
       } else if (ev.type === 'error') {
-        console.error('stream error', ev.payload);
+        const msg = (ev.payload && ev.payload.message) || JSON.stringify(ev.payload);
+        showBanner('Council error: ' + msg, 'error');
       }
       renderMessages();
     });
     await loadConversations();
   } catch (err) {
     console.error(err);
-    alert('Error: ' + err.message);
+    showBanner('Request failed: ' + err.message, 'error');
   } finally {
     state.busy = false;
     $('send-btn').disabled = false;
@@ -312,6 +342,22 @@ function showLoadingPlaceholder(idx, label) {
 function clearLoadingPlaceholder() {
   const existing = document.querySelector('.stream-status');
   if (existing) existing.remove();
+}
+
+function showBanner(msg, kind) {
+  let banner = document.getElementById('banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'banner';
+    document.getElementById('main').prepend(banner);
+  }
+  banner.className = 'banner ' + (kind || 'info');
+  banner.textContent = msg;
+  banner.style.display = 'block';
+  clearTimeout(banner._timer);
+  banner._timer = setTimeout(() => {
+    banner.style.display = 'none';
+  }, 8000);
 }
 
 // Event wiring

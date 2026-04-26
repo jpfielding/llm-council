@@ -28,8 +28,23 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, Bl
 }
 .conv-item:hover { background: #eee; }
 .conv-item.active { background: #e0e7ff; font-weight: 500; }
-.conv-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-row { display: flex; align-items: center; gap: 6px; }
+.conv-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.conv-delete {
+  background: none; border: none; cursor: pointer; color: #999;
+  font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 3px;
+  opacity: 0; transition: opacity 0.15s;
+}
+.conv-item:hover .conv-delete { opacity: 1; }
+.conv-delete:hover { background: #fdd; color: #c33; }
 .conv-meta { font-size: 11px; color: #888; margin-top: 2px; }
+
+.banner {
+  padding: 10px 16px; margin: 0; font-size: 13px; display: none;
+  border-bottom: 1px solid transparent;
+}
+.banner.error { background: #fee; color: #a00; border-bottom-color: #fcc; }
+.banner.info { background: #eef; color: #036; border-bottom-color: #ccd; }
 
 .sidebar-footer {
   padding: 10px 16px; border-top: 1px solid #e0e0e0; font-size: 11px; color: #666;

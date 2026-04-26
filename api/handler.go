@@ -61,6 +61,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /api/conversations", withTimeout(10*time.Second, h.handleListConversations))
 	mux.HandleFunc("POST /api/conversations", withTimeout(10*time.Second, h.handleCreateConversation))
 	mux.HandleFunc("GET /api/conversations/{conversation_id}", withTimeout(10*time.Second, h.handleGetConversation))
+	mux.HandleFunc("DELETE /api/conversations/{conversation_id}", withTimeout(10*time.Second, h.handleDeleteConversation))
 	mux.HandleFunc("POST /api/conversations/{conversation_id}/message", h.handleSendMessage)
 	mux.HandleFunc("POST /api/conversations/{conversation_id}/message/stream", h.handleSendMessageStream)
 
@@ -78,7 +79,7 @@ func withTimeout(d time.Duration, h http.HandlerFunc) http.HandlerFunc {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -152,6 +153,22 @@ func (h *Handler) handleGetConversation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, conv)
+}
+
+func (h *Handler) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("conversation_id")
+	mu := h.store.Lock(id)
+	mu.Lock()
+	defer mu.Unlock()
+	if err := h.store.Delete(id); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type sendMessageRequest struct {

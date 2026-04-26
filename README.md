@@ -33,6 +33,7 @@ All via env vars (or `.env`):
 - `GET /api/conversations` — list metadata
 - `POST /api/conversations` — create empty conversation
 - `GET /api/conversations/{id}` — full conversation
+- `DELETE /api/conversations/{id}` — delete a conversation
 - `POST /api/conversations/{id}/message` — run council synchronously, return full result
 - `POST /api/conversations/{id}/message/stream` — run council, stream SSE events
 
