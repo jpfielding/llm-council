@@ -7,9 +7,30 @@ const state = {
   councilModels: [],
   chairman: '',
   busy: false,
+  authToken: localStorage.getItem('auth_token') || '',
 };
 
 const $ = (id) => document.getElementById(id);
+
+function authHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  if (state.authToken) h['Authorization'] = 'Bearer ' + state.authToken;
+  return h;
+}
+
+function promptForToken() {
+  const t = prompt('This server requires an access token. Enter it to continue:', state.authToken || '');
+  if (t !== null) {
+    state.authToken = t.trim();
+    if (state.authToken) {
+      localStorage.setItem('auth_token', state.authToken);
+    } else {
+      localStorage.removeItem('auth_token');
+    }
+    return true;
+  }
+  return false;
+}
 
 function modelShortName(m) {
   const parts = m.split('/');
@@ -17,7 +38,13 @@ function modelShortName(m) {
 }
 
 async function fetchJSON(url, opts) {
-  const resp = await fetch(url, opts);
+  const o = Object.assign({}, opts || {});
+  o.headers = authHeaders(o.headers);
+  let resp = await fetch(url, o);
+  if (resp.status === 401 && promptForToken()) {
+    o.headers = authHeaders(opts && opts.headers);
+    resp = await fetch(url, o);
+  }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
     throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
@@ -79,7 +106,10 @@ function renderConvList() {
 
 async function deleteConversation(id) {
   if (state.busy) return;
-  const resp = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+  let resp = await fetch(`/api/conversations/${id}`, { method: 'DELETE', headers: authHeaders() });
+  if (resp.status === 401 && promptForToken()) {
+    resp = await fetch(`/api/conversations/${id}`, { method: 'DELETE', headers: authHeaders() });
+  }
   if (!resp.ok && resp.status !== 404) {
     alert('Failed to delete: ' + resp.status);
     return;
@@ -115,7 +145,13 @@ function escapeHTML(s) {
 
 function md(s) {
   if (!s) return '';
-  try { return marked.parse(s); } catch { return escapeHTML(s); }
+  try {
+    const html = marked.parse(s);
+    if (typeof DOMPurify !== 'undefined') {
+      return DOMPurify.sanitize(html);
+    }
+    return html;
+  } catch { return escapeHTML(s); }
 }
 
 function renderMessages() {
@@ -247,11 +283,15 @@ $('messages').addEventListener('click', (e) => {
 
 // SSE stream reader
 async function streamMessage(id, content, onEvent) {
-  const resp = await fetch(`/api/conversations/${id}/message/stream`, {
+  const doFetch = () => fetch(`/api/conversations/${id}/message/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content }),
   });
+  let resp = await doFetch();
+  if (resp.status === 401 && promptForToken()) {
+    resp = await doFetch();
+  }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
     throw new Error(`${resp.status} ${resp.statusText}: ${text}`);

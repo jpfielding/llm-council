@@ -25,6 +25,7 @@ All via env vars (or `.env`):
 | `COUNCIL_MODELS` | `openai/gpt-4o,google/gemini-2.5-flash,anthropic/claude-sonnet-4-5,x-ai/grok-3-mini` |
 | `CHAIRMAN_MODEL` | `anthropic/claude-sonnet-4-5` |
 | `TITLE_MODEL` | `google/gemini-2.5-flash` |
+| `AUTH_TOKEN` | *(empty = no auth)* — if set, required on /api/* via `Authorization: Bearer <token>` or `?token=<token>` |
 
 ## API
 

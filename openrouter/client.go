@@ -11,13 +11,14 @@ import (
 	"time"
 )
 
-const endpoint = "https://openrouter.ai/api/v1/chat/completions"
+const defaultEndpoint = "https://openrouter.ai/api/v1/chat/completions"
 
 // maxRetries for transient errors (429, 5xx, network). Total attempts = maxRetries + 1.
 const maxRetries = 2
 
 type Client struct {
 	apiKey     string
+	endpoint   string
 	httpClient *http.Client
 	referer    string
 	title      string
@@ -50,11 +51,18 @@ type chatResponse struct {
 func NewClient(apiKey string) *Client {
 	return &Client{
 		apiKey:     apiKey,
+		endpoint:   defaultEndpoint,
 		httpClient: &http.Client{Timeout: 120 * time.Second},
 		referer:    "http://localhost",
 		title:      "llm-council-go",
 	}
 }
+
+// SetEndpoint overrides the API endpoint (used by tests).
+func (c *Client) SetEndpoint(url string) { c.endpoint = url }
+
+// SetTimeout overrides the HTTP timeout (used by tests).
+func (c *Client) SetTimeout(d time.Duration) { c.httpClient.Timeout = d }
 
 func (c *Client) Complete(ctx context.Context, model string, messages []ChatMessage) (string, error) {
 	body, err := json.Marshal(chatRequest{Model: model, Messages: messages})
@@ -87,7 +95,7 @@ func (c *Client) Complete(ctx context.Context, model string, messages []ChatMess
 
 // attempt runs one HTTP call. Returns (content, retryable, err).
 func (c *Client) attempt(ctx context.Context, model string, body []byte) (string, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", false, fmt.Errorf("new request: %w", err)
 	}

@@ -37,10 +37,11 @@ func main() {
 	}, orClient)
 
 	h, err := api.New(api.Config{
-		Store:    store,
-		Council:  c,
-		Models:   cfg.CouncilModels,
-		Chairman: cfg.Chairman,
+		Store:     store,
+		Council:   c,
+		Models:    cfg.CouncilModels,
+		Chairman:  cfg.Chairman,
+		AuthToken: cfg.AuthToken,
 	})
 	if err != nil {
 		slog.Error("handler init", "err", err)
@@ -63,7 +64,8 @@ func main() {
 			"addr", srv.Addr,
 			"council", cfg.CouncilModels,
 			"chairman", cfg.Chairman,
-			"data_dir", cfg.DataDir)
+			"data_dir", cfg.DataDir,
+			"auth", cfg.AuthToken != "")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server", "err", err)
 			os.Exit(1)

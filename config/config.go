@@ -15,6 +15,7 @@ type Config struct {
 	CouncilModels    []string
 	Chairman         string
 	TitleModel       string
+	AuthToken        string
 }
 
 var defaultCouncilModels = []string{
@@ -33,6 +34,7 @@ func Load() (*Config, error) {
 		DataDir:          getenvDefault("DATA_DIR", "./data"),
 		Chairman:         getenvDefault("CHAIRMAN_MODEL", "anthropic/claude-sonnet-4-5"),
 		TitleModel:       getenvDefault("TITLE_MODEL", "google/gemini-2.5-flash"),
+		AuthToken:        os.Getenv("AUTH_TOKEN"),
 	}
 
 	if raw := os.Getenv("COUNCIL_MODELS"); raw != "" {

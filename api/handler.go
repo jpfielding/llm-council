@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jpfielding/llm-council/council"
@@ -18,18 +20,20 @@ import (
 )
 
 type Handler struct {
-	store    *storage.Store
-	council  *council.Council
-	models   []string
-	chairman string
-	tmpl     *template.Template
+	store     *storage.Store
+	council   *council.Council
+	models    []string
+	chairman  string
+	authToken string
+	tmpl      *template.Template
 }
 
 type Config struct {
-	Store    *storage.Store
-	Council  *council.Council
-	Models   []string
-	Chairman string
+	Store     *storage.Store
+	Council   *council.Council
+	Models    []string
+	Chairman  string
+	AuthToken string
 }
 
 func New(cfg Config) (*Handler, error) {
@@ -38,11 +42,12 @@ func New(cfg Config) (*Handler, error) {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 	return &Handler{
-		store:    cfg.Store,
-		council:  cfg.Council,
-		models:   cfg.Models,
-		chairman: cfg.Chairman,
-		tmpl:     tmpl,
+		store:     cfg.Store,
+		council:   cfg.Council,
+		models:    cfg.Models,
+		chairman:  cfg.Chairman,
+		authToken: cfg.AuthToken,
+		tmpl:      tmpl,
 	}, nil
 }
 
@@ -56,16 +61,44 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticSub)))
 
 	mux.HandleFunc("GET /{$}", h.handleIndex)
+	// Health is always reachable (liveness probes).
 	mux.HandleFunc("GET /api/health", h.handleHealth)
-	mux.HandleFunc("GET /api/config", h.handleConfig)
-	mux.HandleFunc("GET /api/conversations", withTimeout(10*time.Second, h.handleListConversations))
-	mux.HandleFunc("POST /api/conversations", withTimeout(10*time.Second, h.handleCreateConversation))
-	mux.HandleFunc("GET /api/conversations/{conversation_id}", withTimeout(10*time.Second, h.handleGetConversation))
-	mux.HandleFunc("DELETE /api/conversations/{conversation_id}", withTimeout(10*time.Second, h.handleDeleteConversation))
-	mux.HandleFunc("POST /api/conversations/{conversation_id}/message", h.handleSendMessage)
-	mux.HandleFunc("POST /api/conversations/{conversation_id}/message/stream", h.handleSendMessageStream)
+
+	// All other /api/* routes require the bearer token when AUTH_TOKEN is set.
+	auth := h.authMiddleware
+	mux.Handle("GET /api/config", auth(http.HandlerFunc(h.handleConfig)))
+	mux.Handle("GET /api/conversations", auth(withTimeout(10*time.Second, h.handleListConversations)))
+	mux.Handle("POST /api/conversations", auth(withTimeout(10*time.Second, h.handleCreateConversation)))
+	mux.Handle("GET /api/conversations/{conversation_id}", auth(withTimeout(10*time.Second, h.handleGetConversation)))
+	mux.Handle("DELETE /api/conversations/{conversation_id}", auth(withTimeout(10*time.Second, h.handleDeleteConversation)))
+	mux.Handle("POST /api/conversations/{conversation_id}/message", auth(http.HandlerFunc(h.handleSendMessage)))
+	mux.Handle("POST /api/conversations/{conversation_id}/message/stream", auth(http.HandlerFunc(h.handleSendMessageStream)))
 
 	return corsMiddleware(mux)
+}
+
+// authMiddleware enforces AUTH_TOKEN when configured. Accepts the token via
+// Authorization: Bearer <token> or ?token=<token> (the latter is needed for
+// SSE where custom headers aren't always practical from the browser).
+func (h *Handler) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h.authToken == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		provided := ""
+		if authz := r.Header.Get("Authorization"); strings.HasPrefix(authz, "Bearer ") {
+			provided = strings.TrimPrefix(authz, "Bearer ")
+		}
+		if provided == "" {
+			provided = r.URL.Query().Get("token")
+		}
+		if provided == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(h.authToken)) != 1 {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func withTimeout(d time.Duration, h http.HandlerFunc) http.HandlerFunc {
@@ -80,7 +113,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

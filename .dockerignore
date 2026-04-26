@@ -1,0 +1,9 @@
+.git
+.github
+data
+.env
+.env.example
+*.md
+Dockerfile
+.dockerignore
+llm-council
